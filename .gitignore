@@ -1,0 +1,12 @@
+# private scratch tests: not part of the repository
+test/
+
+# build products and run outputs (run-tests.sh writes them to $WORK)
+*.o
+_*.c
+.DS_Store
+unit-test/stokes_wave/stokes_drift
+unit-test/stokes_wave/stokes_drift-mpi
+unit-test/stokes_wave/*.dat
+unit-test/stokes_wave/*.png
+unit-test/stokes_wave/*.mp4
