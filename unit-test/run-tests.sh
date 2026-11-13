@@ -69,6 +69,15 @@ cp tsph.c $WORK/build/after/
      [ -x $n-$m ] || { echo "build of after/$n-$m failed, see $WORK/build/after/$n.log" >&2; exit 1; }
    done
  done)
+# Order in time (tconv, run.h) and the time of u with a real solver
+# (tcentered, navier-stokes/centered.h)
+cp tconv.c tcentered.c $WORK/build/after/
+(cd $WORK/build/after
+ qcc -O2 -disable-dimensions -grid=multigrid tconv.c -o tconv -lm 2> tconv.log
+ qcc -O2 -disable-dimensions -grid=multigrid tcentered.c -o tcentered -lm 2> tcentered.log
+ for n in tconv tcentered; do
+   [ -x $n ] || { echo "build of after/$n failed, see $WORK/build/after/$n.log" >&2; exit 1; }
+ done)
 # Particles in a Stokes wave with layered/nh.h (vertical motion with w):
 # tnh (solved flow) and tnhp (prescribed flow)
 cp tnh.c stokes_wave/stokes.h $WORK/build/after/
@@ -157,6 +166,30 @@ done
 for np in 4 16; do
   check "Stokes wave, prescribed flow: $np ranks = serial" $R/nh/prescribed-after-np{1,$np}/traj.txt
 done
+
+# Order in time: rotation with a time-dependent rate, linear in space
+# (exact interpolation), error at t = 2 for dt = 0.02, 0.01, 0.005
+mkdir -p $R/order
+order() { # <description> <expected order> tconv args...
+  local name=$1 o=$2; shift 2
+  for dt in 0.02 0.01 0.005; do $B/after/tconv dt=$dt "$@" 2>/dev/null; done |
+    grep '^[0-9]' > $R/order/$name.txt || true
+  awk -v o=$o 'NR > 1 { q = log(e/$3)/log(2); if (q < o - 0.1 || q > o + 0.1) bad++ }
+    { e = $3 } END { print (NR == 3 && !bad ? "ok" : "wrong") }' $R/order/$name.txt \
+    > $R/order/$name.ok
+  echo ok > $R/order/expected.ok
+  check "order in time: $name, order $o" $R/order/$name.ok $R/order/expected.ok
+}
+order equal-steps 3
+order unequal-steps 3 r=1.5
+order solver-equal-steps 3 solver=1
+order solver-unequal-steps 3 solver=1 r=1.5
+order rk2 2 rk2=1
+# centered.h: u(t) = G t, the position must be exact at t (old code: G t dt)
+for dt in 0.01 0.005; do $B/after/tcentered $dt 2>/dev/null; done | grep '^centered' > $R/order/centered.txt || true
+awk '{ if ($4 > 1e-12 || $4 < -1e-12) bad++ } END { print (NR == 2 && !bad ? "ok" : "wrong") }' \
+  $R/order/centered.txt > $R/order/centered.ok
+check "centered.h: particles use u(t), not u(t+dt)" $R/order/centered.ok $R/order/expected.ok
 
 # Surface tracers (PARTICLE_SURFACE): sheared layers, particles placed in
 # the bottom layer or above the surface must follow the top layer with z

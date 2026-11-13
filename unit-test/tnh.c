@@ -30,16 +30,17 @@ double k_ = 2.*pi, h_ = 0.5, g_ = 1.;
 #include "stokes.h"
 
 /**
-With `-DPRESCRIBED=1` the flow is not the solver's: before the particle
-events of every step (a `last` event defined before including the
-particle code), the layers, `u` and `w` are set from the same Stokes
-wave, moving at its phase speed. The flow is then exactly the same at
+With `-DPRESCRIBED=1` the flow is not the solver's: the layers, `u`
+and `w` are set from the same Stokes wave, moving at its phase speed, at
+time `t`, both before the solver's events (an ordinary event, read by
+the particles) and after them (a `last` event defined before including
+the particle code, which undoes the solver's update). The flow is then exactly the same at
 any number of ranks, unlike the solved one (the pressure solver of
 `nh.h` is not bit-identical across decompositions), so the trajectories
 must be bit-identical between serial and MPI runs. */
 
 #if PRESCRIBED
-event prescribe (i++, last)
+void prescribe_flow (void)
 {
   double c = sqrt (g_*tanh (k_*h_)/k_), xs = c*t; // phase speed
   foreach() {
@@ -54,6 +55,9 @@ event prescribe (i++, last)
     }
   }
 }
+
+event prescribe0 (i++) prescribe_flow();
+event prescribe (i++, last) prescribe_flow();
 #endif
 
 #include "tracer-particles.h"
@@ -116,7 +120,7 @@ event viscous_term (i++)
   horizontal_diffusion ({u, w}, nu, dt);
 }
 
-event snap (t += T0/10.)
+event snap (t += T0/10., last) // after the particle events
 {
   char name[80];
   sprintf (name, "traj-%d", pid());

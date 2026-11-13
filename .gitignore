@@ -5,8 +5,12 @@ test/
 *.o
 _*.c
 .DS_Store
+unit-test/tconv
+unit-test/tcentered
+unit-test/order_in_time*
 unit-test/stokes_wave/stokes_drift
 unit-test/stokes_wave/stokes_drift-mpi
 unit-test/stokes_wave/*.dat
 unit-test/stokes_wave/*.png
 unit-test/stokes_wave/*.mp4
+unit-test/*.png

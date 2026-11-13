@@ -67,9 +67,11 @@ vector u[];
 
 /**
 The particle time is measured between `tic`, defined before the
-particle events, and `toc`, defined after them. The particle events
-are `last` events, which run after all others in the order they are
-defined, so `tic`, `toc` and the output events are `last` too. */
+particle events, and `toc`, defined after them. The particles read the
+velocity in an ordinary event and move in `last` events, which run
+after all ordinary events in the order they are defined: `tic` is an
+ordinary event defined before them, `toc` and the output events are
+`last` events defined after them. */
 
 static double wtime (void) {
   struct timespec ts;
@@ -82,7 +84,7 @@ long nsteps = 0;
 bool counting = false;
 double nrecv = 0., nmsgs = 0., ncoll = 0.;
 
-event tic (i++, last) {
+event tic (i++) { // ordinary: before the particles read the velocity
 #if _MPI
   MPI_Barrier (MPI_COMM_WORLD);
 #endif

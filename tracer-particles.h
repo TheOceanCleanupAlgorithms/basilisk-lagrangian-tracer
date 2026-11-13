@@ -185,24 +185,37 @@ void interpolate_vel (Particles p, int swtch) {
   }
 }
 /**
-The three Runge-Kutta stages are defined below:
- */
-void RK_step1 (Particles p, double dtf[2]) {
-  interpolate_vel(p, 1);
-  foreach_particle_in(p) { 
-    foreach_dimension() {
-      p().locn.x = p().x; //store the locations at t_n 
-      p().x += dtf[0]*p().u.x;
-    }
+The three Runge-Kutta stages are defined below. Each stage has two
+parts: reading the velocity at the particles (`RK_read*()`, and the
+third stage, which also gives the new position) and moving the
+particles with it (`RK_move*()`); see the events below for why. */
+
+void RK_read1 (Particles p) {
+  interpolate_vel (p, 1);
+  foreach_particle_in(p) {
+    foreach_dimension()
+      p().locn.x = p().x; //store the locations at t_n
 #if TP_VERTICAL
     p().locn.z = p().z;
-    p().z += dtf[0]*p().u.z;
 #endif
   }
 }
 
-void RK_step2 (Particles p, double dtf[2]) {
-  interpolate_vel(p, 2);
+void RK_move1 (Particles p, double dtf[2]) {
+  foreach_particle_in(p) {
+    foreach_dimension()
+      p().x = p().locn.x + dtf[0]*p().u.x;
+#if TP_VERTICAL
+    p().z = p().locn.z + dtf[0]*p().u.z;
+#endif
+  }
+}
+
+void RK_read2 (Particles p) {
+  interpolate_vel (p, 2);
+}
+
+void RK_move2 (Particles p, double dtf[2]) {
   double a1 = -1, a2 = 2., h = dtf[1] + dtf[0];
   if (dtf[1] != dtf[0] || P_RK2) {
     double c = dtf[0]/h;
@@ -256,64 +269,90 @@ void RK_step3 (Particles p, double dtf[2]) {
   }
 }
 /**
-The particles are advanced in time in various RK-stage events. Note
-that the particle coordinates (`p().x`) only contain the proper
-approximated location inbetween `step3` and `step1`. These locations
-are otherwise stored in `p().locn`. 
+## The events
 
-All the lists are exchanged at once (`particles_boundary()`). Step 1
-directly follows step 3, within the same iteration, and in between
-the particles only move by the third-stage correction, a small
-fraction of a cell. On the multigrid, step 1 therefore skips the MPI
-exchange and interpolates particles that have just crossed into a
-neighbour from the ghost layer, with the same result (see
-`particle_locate()`): two exchanges per two steps instead of
-three. Step 1 exchanges at `i = 0`, and whenever step 3 did not run. */
+One Runge–Kutta step spans two solver steps, from $t_n$ to
+$t_{n+2}$: stage 1 at even steps, stage 2 at odd steps, stage 3 at the
+next even step.
 
-event tracer_particles_step3 (i += 2, last);
-event tracer_particles_step3 (i = 2; i += 2) {
-  if (!P_RK2 && tracer_particles) {
-    particles_boundary (tracer_particles);
-    foreach_P_in_list (tracer_particles)
-      RK_step3 (P, dtf);
-  }
-}
+**The velocity is read before the solver advances it.** The solvers
+(`navier-stokes/centered.h`, `layered/hydro.h`, `layered/nh.h`, ...)
+update `u` (and `w`) from $t$ to $t + \Delta t$ in their own `last`
+events, which run before any `last` event defined later. Read there,
+`u` would be one step ahead of `t`, and the positions one step late
+(first order in time). So the velocity is read in an ordinary event,
+`tracer_particles_read`, which runs before all `last` events, while `u`
+is still at time `t`. The step `dt` itself is only known after the
+solver's `set_dtmax` and `stability` events, so the particles are moved
+in `last` events, `tracer_particles_step1` (even steps) and
+`tracer_particles_step2` (odd steps). A flow prescribed by the user must
+therefore be set in an ordinary event that runs before
+`tracer_particles_read`, such as `velocity` or `init` (declared above),
+or in any event defined before `#include "tracer-particles.h"`.
+
+Note that the particle coordinates (`p().x`) only contain the proper
+approximated location inbetween stage 3 and the move of stage 1. These
+locations are otherwise stored in `p().locn`.
+
+All the lists are exchanged at once (`particles_boundary()`). Stage 1
+directly follows stage 3, within the same event, and in between the
+particles only move by the third-stage correction, a small fraction of
+a cell. On the multigrid, stage 1 therefore skips the MPI exchange and
+interpolates particles that have just crossed into a neighbour from the
+ghost layer, with the same result (see `particle_locate()`): two
+exchanges per two steps instead of three. Stage 1 exchanges at `i = 0`,
+and whenever stage 3 did not run.
+
+Right after the read of stage 1, `p().locn` holds the position at time
+`t` (the third-order one, at even steps) and `p().u` the velocity
+there. `tp_position_time` records that time, for output functions such
+as [write_class_particles.h](). */
 
 void tp_insert_releases (void);
 
-/**
-Right after step 1, `p().locn` holds the position at time `t` (the
-third-order one, at even steps) and `p().u` the velocity there.
-`tp_position_time` records that time, for output functions such as
-[write_class_particles.h](). */
-
 double tp_position_time = - HUGE;
 
-event tracer_particles_step1 (i += 2, last) {
+event tracer_particles_read (i++) {
+  if (i % 2 == 0) {
 #if LAYERS && !TP_VERTICAL && !PARTICLE_SURFACE
-  if (i == 0 && lookup_field ("w").i >= 0 && pid() == 0)
-    fprintf (stderr, "tracer-particles.h: a field 'w' exists but particles do"
-	     " not move vertically: include layered/nh.h before"
-	     " tracer-particles.h\n");
+    if (i == 0 && lookup_field ("w").i >= 0 && pid() == 0)
+      fprintf (stderr, "tracer-particles.h: a field 'w' exists but particles"
+	       " do not move vertically: include layered/nh.h before"
+	       " tracer-particles.h\n");
 #endif
-  dtf[0] = dt;
-  tp_insert_releases();
-  if (tracer_particles) {
-    particles_boundary (tracer_particles, exchange = (i == 0 || P_RK2));
-    foreach_P_in_list (tracer_particles)
-      RK_step1 (P, dtf);
+    if (i >= 2 && !P_RK2 && tracer_particles) { // stage 3
+      particles_boundary (tracer_particles);
+      foreach_P_in_list (tracer_particles)
+	RK_step3 (P, dtf);
+    }
+    tp_insert_releases();
+    if (tracer_particles) { // stage 1
+      particles_boundary (tracer_particles, exchange = (i == 0 || P_RK2));
+      foreach_P_in_list (tracer_particles)
+	RK_read1 (P);
+    }
+    tp_position_time = t;
   }
-  tp_position_time = t;
+  else if (tracer_particles) { // stage 2
+    particles_boundary (tracer_particles);
+    foreach_P_in_list (tracer_particles)
+      RK_read2 (P);
+  }
+}
+
+event tracer_particles_step1 (i += 2, last) {
+  dtf[0] = dt;
+  if (tracer_particles)
+    foreach_P_in_list (tracer_particles)
+      RK_move1 (P, dtf);
 }
 
 event tracer_particles_step2 (i += 2, last);
 event tracer_particles_step2 (i = 1; i += 2) {
   dtf[1] = dt;
-  if (tracer_particles) {
-    particles_boundary (tracer_particles);
+  if (tracer_particles)
     foreach_P_in_list (tracer_particles)
-      RK_step2 (P, dtf);
-  }
+      RK_move2 (P, dtf);
 }
 
 event free_tracers (t = end) {
@@ -412,9 +451,11 @@ release needs no communication and its tags do not depend on the
 number of ranks. Positions outside the domain are dropped, leaving
 their tags unused.
 
-The particles join the list at the next `tracer_particles_step1`, the
-start of a Runge–Kutta cycle: released at an even step, they start at
-that time; at an odd step, one step later. Joining in the middle of a
+The particles join the list at the next stage 1 (read in
+`tracer_particles_read`), the start of a Runge–Kutta cycle: released at
+an even step from an event that runs before `tracer_particles_read`
+(`init`, or an event defined before `#include "tracer-particles.h"`),
+they start at that time; otherwise at the next even step. Joining in the middle of a
 cycle would advance them as if they had existed since its start. */
 
 typedef struct {

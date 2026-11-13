@@ -709,8 +709,8 @@ there are exact copies of the neighbour's (the exchange sends both
 ghost layers, corners included), and bilinear interpolation from such
 a cell reads at most the second layer. A particle that has just left
 its subdomain is then interpolated by its own rank with the same
-result as by its owner, which lets `tracer_particles_step1` skip an
-exchange. On a closed wall there is no copy, so the particle is not
+result as by its owner, which lets stage 1 of the tracer particles
+skip an exchange. On a closed wall there is no copy, so the particle is not
 found there. `q` is changed to the periodic image of the position that
 lies in the ghost layer, which is the position to interpolate at.
 

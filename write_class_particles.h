@@ -38,9 +38,9 @@ same at any number of ranks. The files stay open between calls.
 
 ## What is written
 
-* **Position.** For tracer particles called right after
-  `tracer_particles_step1` (a `last` event defined after including
-  [tracer-particles.h](), at an even step), the position at time `t`
+* **Position.** For tracer particles called after stage 1 (a `last`
+  event defined after including [tracer-particles.h](), at an even
+  step), the position at time `t`
   (`p().locn`). Otherwise `p().x`, which for tracer particles is a
   Runge–Kutta stage estimate: a warning says so, once. A stage
   position just outside a periodic domain is written wrapped into it,

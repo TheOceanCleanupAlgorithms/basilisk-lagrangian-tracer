@@ -90,6 +90,14 @@ rank that holds no particles.
 | `release_tracer_particles (P, pos, n)` | adds `n` particles at `pos[0..n-1]` into list `P` during the run; every rank passes the same positions |
 | `new_tracer_particles (n)` + `set_particle_attributes (P)` | your own placement |
 
+**Time stepping.** A third-order Runge–Kutta step spans two solver
+steps. The particles read the velocity in an ordinary event, before the
+solver advances it in its `last` events, and move in `last` events, once
+`dt` is known: positions are third order in time with any solver. A flow
+you set yourself (no solver) must be set in an ordinary event that runs
+before the particle read: `velocity`, `init`, or any event defined
+before `#include "tracer-particles.h"`.
+
 Each particle has a **tag** that identifies it for its whole life,
 whatever rank holds it. Tags are given at creation and are the same at
 any number of ranks (on the multigrid; on trees, `init_tp_cells()` tags
@@ -150,8 +158,8 @@ positions given in another convention, `lon_to_domain()` in
 cd unit-test && ./run-tests.sh
 ```
 
-76 checks on the multigrid and quadtree, serial and with MPI, against
-exact solutions and serial runs. See `unit-test/README.md`, which also
+82 checks on the multigrid and quadtree, serial and with MPI, against
+exact solutions and serial runs, including the order in time (3). See `unit-test/README.md`, which also
 explains the Stokes-wave test (`unit-test/stokes_wave/`).
 
 ## Limitations

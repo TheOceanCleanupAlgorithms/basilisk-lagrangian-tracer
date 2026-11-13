@@ -14,7 +14,7 @@ only, with the current Basilisk.
 ```
 
 It builds every test program, runs them on 1 to 64 ranks and prints
-each check and the totals (76 checks; the script fails if one fails).
+each check and the totals (82 checks; the script fails if one fails).
 Builds, raw results and the list of checks (`results/checks.txt`) go to
 `$WORK` (default `~/Library/Caches/particle-tests`). `./run-tests.sh build` only builds.
 It needs Basilisk (`$BASILISK`, default `~/basilisk/src`), MPI and
@@ -26,6 +26,22 @@ Python 3 with numpy (`PYTHON=...` to choose it).
 | `tml.c` | the multilayer solver: layer selection, surface tracers (`PARTICLE_SURFACE`) |
 | `tsph.c` | positions in degrees with `spherical.h` (`PARTICLE_GEOGRAPHY`) |
 | `tnh.c` | vertical motion with `layered/nh.h` in a Stokes wave, serial and MPI |
+| `tconv.c` | order in time: a rotating flow with a time-dependent rate, linear in space (exact interpolation); order 3, also when `u` is updated like a solver does and with unequal steps; order 2 with `P_RK2` |
+| `tcentered.c` | with `navier-stokes/centered.h`, the particles use `u(t)`, not the `u(t + dt)` the solver has already computed: exact to round-off for `u = G t` |
+
+## The order in time (figure)
+
+```bash
+python3 plot_order.py
+```
+
+It builds `tconv` and `tcentered` here, in `unit-test/` (with qcc and
+the headers of the folder above, only when they are missing or out of
+date), runs them, prints the orders and writes `order_in_time.png` here
+(`--out FILE`), with its data in `order_in_time_tconv.dat` (case, dt,
+error) and `order_in_time_tcentered.dat` (dt, t, error): the error against the time step for the rotating flow (order 3,
+order 2 with `P_RK2`) and for `centered.h` (round-off). It needs numpy
+and matplotlib.
 
 ## The Stokes wave (`stokes_wave/`)
 
