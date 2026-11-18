@@ -245,7 +245,9 @@ field is wider. */
 static void wcp_field (char * dst, double v, bool last)
 {
   char tmp[32];
-  if (fabs (v) < 1e-99)
+  if (isnan (v))
+    ; // written as nan: no comparison, which would trap on Linux
+  else if (fabs (v) < 1e-99)
     v = 0.;
   else if (fabs (v) >= 1e100)
     v = v > 0. ? HUGE_VAL : - HUGE_VAL;
